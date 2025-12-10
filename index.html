@@ -12,67 +12,129 @@
     font-family: Arial, sans-serif;
   }
 
-  #slideshow img {
-    width: 100vw;
-    height: 100vh;
-    object-fit: cover;
-    position: absolute;
+  #slideshow {
+    position: fixed;
     top: 0;
     left: 0;
-    opacity: 0;
-    transition: opacity 3s ease-in-out;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    background: black;
   }
 
-  #startBtn {
+  #slideshow img {
+    width: 110vw;
+    height: 110vh;
+    object-fit: cover;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(1.05);
+    opacity: 0;
+    transition: opacity 2s ease-in-out;
+    transform-origin: center center;
+  }
+
+  /* Ken Burns zoom-in */
+  @keyframes zoomInKB {
+    from { transform: translate(-50%, -50%) scale(1.05); }
+    to   { transform: translate(-50%, -50%) scale(1.18); }
+  }
+
+  /* Ken Burns zoom-out */
+  @keyframes zoomOutKB {
+    from { transform: translate(-50%, -50%) scale(1.18); }
+    to   { transform: translate(-50%, -50%) scale(1.05); }
+  }
+
+  .kenburns-in {
+    animation: zoomInKB 7s ease-in-out forwards;
+  }
+
+  .kenburns-out {
+    animation: zoomOutKB 7s ease-in-out forwards;
+  }
+
+  /* Optional small loading text (will be hidden once images start) */
+  #loadingText {
     position: fixed;
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    background: #1e88e5;
-    color: white;
-    padding: 18px 40px;
-    font-size: 24px;
-    border-radius: 14px;
-    cursor: pointer;
-    z-index: 9999;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    color: #ffffffcc;
+    font-size: 20px;
+    z-index: 10;
+    font-family: Arial, sans-serif;
   }
 </style>
 </head>
 
 <body>
 
-<!-- Background Music -->
-<audio id="bgmusic" loop>
+<!-- Background Music (auto-start hack will be used in JS) -->
+<audio id="bgmusic" loop preload="auto">
   <source src="https://files.freemusicarchive.org/storage-freemusicarchive-org/music/no_curator/A_A_Aalto/Resting_Place/A_A_Aalto_-_Resting_Place.mp3" type="audio/mpeg">
 </audio>
 
-<!-- Start Button -->
-<div id="startBtn">▶ START SLIDESHOW</div>
+<div id="loadingText">Loading slideshow…</div>
 
 <!-- Slideshow Container -->
 <div id="slideshow"></div>
 
 <script>
-// Start button event (browser audio rule bypass)
-document.getElementById("startBtn").addEventListener("click", function () {
-  document.getElementById("bgmusic").play();
-  this.style.display = "none";
-});
+// GOOGLE DRIVE API URL (your working one)
+const API_URL = "https://script.google.com/macros/s/AKfycbxj06_2i1gfWfLLVl4SK_a2wJ81xinZ1S2lSy7dLSrK3eVlClOtsZ70LVVyz4TX4KQZeg/exec";
 
-// GOOGLE DRIVE API URL
-const API_URL = "https://script.google.com/macros/s/AKfycbwUu5l1ag6YK5tlg7UgFQRjl_6ecHaZD51LIS6fZLdtUpZqCdQFT-NXj5Vc31TjOHv-0Q/exec";
+// CONFIG
+const SLIDE_DURATION = 7000; // 7 seconds
+
 let photos = [];
 let index = 0;
+let imgs = [];
+let slideshowStarted = false;
 
-fetch(API_URL)
-  .then(r => r.json())
-  .then(data => {
-    photos = data.photos;
-    loadImages();
-    startSlideshow();
-  });
+// Shuffle helper
+function shuffleArray(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
 
+// Auto fullscreen (where supported)
+function requestFullscreenSafe() {
+  const docEl = document.documentElement;
+  try {
+    if (docEl.requestFullscreen) docEl.requestFullscreen();
+    else if (docEl.webkitRequestFullscreen) docEl.webkitRequestFullscreen();
+    else if (docEl.mozRequestFullScreen) docEl.mozRequestFullScreen();
+    else if (docEl.msRequestFullscreen) docEl.msRequestFullscreen();
+  } catch (e) {
+    console.log("Fullscreen request blocked or unsupported:", e);
+  }
+}
+
+// Auto music "silent unlock" hack
+function startBackgroundMusic() {
+  const bg = document.getElementById("bgmusic");
+  if (!bg) return;
+
+  bg.volume = 0;
+  const playPromise = bg.play();
+  if (playPromise !== undefined) {
+    playPromise.then(() => {
+      // After short delay, fade to full volume
+      setTimeout(() => {
+        bg.volume = 1;
+      }, 800);
+    }).catch((err) => {
+      console.log("Autoplay might be blocked in this browser:", err);
+    });
+  }
+}
+
+// Load images into DOM
 function loadImages() {
   const slideshow = document.getElementById("slideshow");
   photos.forEach(src => {
@@ -80,21 +142,85 @@ function loadImages() {
     img.src = src;
     slideshow.appendChild(img);
   });
+  imgs = document.querySelectorAll("#slideshow img");
 }
 
+// Start slideshow with Ken Burns + shuffle
 function startSlideshow() {
-  const imgs = document.querySelectorAll("#slideshow img");
+  if (slideshowStarted) return;
+  slideshowStarted = true;
+
+  // Hide loading text
+  const loadingText = document.getElementById("loadingText");
+  if (loadingText) loadingText.style.display = "none";
+
+  if (!imgs || imgs.length === 0) {
+    console.log("No images yet, retrying slideshow start...");
+    setTimeout(startSlideshow, 500);
+    return;
+  }
 
   function showSlide() {
-    imgs.forEach(img => img.style.opacity = 0);
-    imgs[index].style.opacity = 1;
+    // Clear all
+    imgs.forEach(img => {
+      img.style.opacity = 0;
+      img.classList.remove("kenburns-in", "kenburns-out");
+    });
+
+    const current = imgs[index];
+    if (current) {
+      current.style.opacity = 1;
+
+      // Randomly choose zoom-in or zoom-out (mixed)
+      const zoomIn = Math.random() < 0.5;
+      if (zoomIn) {
+        current.classList.add("kenburns-in");
+      } else {
+        current.classList.add("kenburns-out");
+      }
+    }
 
     index = (index + 1) % imgs.length;
   }
 
-  showSlide();               // show first image
-  setInterval(showSlide, 7000);  // change every 7 seconds
+  showSlide(); // first image
+  setInterval(showSlide, SLIDE_DURATION);
 }
+
+// Fetch photo list from Google Apps Script
+fetch(API_URL)
+  .then(r => r.json())
+  .then(data => {
+    if (!data || !data.photos || !data.photos.length) {
+      document.getElementById("loadingText").textContent = "No photos found in folder.";
+      return;
+    }
+
+    // Shuffle photos for random order
+    photos = shuffleArray(data.photos.slice());
+
+    loadImages();
+
+    // Small delay to ensure images are in DOM, then start slideshow
+    setTimeout(startSlideshow, 500);
+
+    // Try auto music + fullscreen after images are ready
+    startBackgroundMusic();
+    setTimeout(requestFullscreenSafe, 1000);
+  })
+  .catch(err => {
+    console.error("Error loading photos:", err);
+    const lt = document.getElementById("loadingText");
+    if (lt) lt.textContent = "Error loading photos.";
+  });
+
+// As extra safety, attempt fullscreen + music once on load as well
+window.addEventListener("load", () => {
+  setTimeout(() => {
+    startBackgroundMusic();
+    requestFullscreenSafe();
+  }, 800);
+});
 </script>
 
 </body>
