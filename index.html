@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Event Slideshow</title>
+
+<style>
+  body {
+    margin: 0;
+    background: black;
+    overflow: hidden;
+    font-family: Arial, sans-serif;
+  }
+
+  #slideshow img {
+    width: 100vw;
+    height: 100vh;
+    object-fit: cover;
+    position: absolute;
+    top: 0;
+    left: 0;
+    opacity: 0;
+    transition: opacity 3s ease-in-out;
+  }
+
+  #startBtn {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: #1e88e5;
+    color: white;
+    padding: 18px 40px;
+    font-size: 24px;
+    border-radius: 14px;
+    cursor: pointer;
+    z-index: 9999;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  }
+</style>
+</head>
+
+<body>
+
+<!-- Background Music -->
+<audio id="bgmusic" loop>
+  <source src="https://files.freemusicarchive.org/storage-freemusicarchive-org/music/no_curator/A_A_Aalto/Resting_Place/A_A_Aalto_-_Resting_Place.mp3" type="audio/mpeg">
+</audio>
+
+<!-- Start Button -->
+<div id="startBtn">▶ START SLIDESHOW</div>
+
+<!-- Slideshow Container -->
+<div id="slideshow"></div>
+
+<script>
+// Start button event (browser audio rule bypass)
+document.getElementById("startBtn").addEventListener("click", function () {
+  document.getElementById("bgmusic").play();
+  this.style.display = "none";
+});
+
+// GOOGLE DRIVE API URL
+const API_URL = "https://script.google.com/macros/s/AKfycbz3isKPFJHtrdqGSLR7lcm68wACaazeqCaOV9xpQHX_Xfk5lYiNbM3G03_ltACUR9pddw/exec";
+
+let photos = [];
+let index = 0;
+
+fetch(API_URL)
+  .then(r => r.json())
+  .then(data => {
+    photos = data.photos;
+    loadImages();
+    startSlideshow();
+  });
+
+function loadImages() {
+  const slideshow = document.getElementById("slideshow");
+  photos.forEach(src => {
+    let img = document.createElement("img");
+    img.src = src;
+    slideshow.appendChild(img);
+  });
+}
+
+function startSlideshow() {
+  const imgs = document.querySelectorAll("#slideshow img");
+
+  function showSlide() {
+    imgs.forEach(img => img.style.opacity = 0);
+    imgs[index].style.opacity = 1;
+
+    index = (index + 1) % imgs.length;
+  }
+
+  showSlide();               // show first image
+  setInterval(showSlide, 7000);  // change every 7 seconds
+}
+</script>
+
+</body>
+</html>
