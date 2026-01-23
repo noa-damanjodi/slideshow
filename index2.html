@@ -1,266 +1,106 @@
 <!DOCTYPE html>
 <html>
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Event Slideshow</title>
-
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Slideshow Debug</title>
 <style>
-  body {
-    margin: 0;
-    background: black;
-    overflow: hidden;
-    font-family: Arial, sans-serif;
-  }
-
-  #slideshow {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100vw;
-    height: 100vh;
-    overflow: hidden;
-    background: black;
-  }
-
-  #slideshow img {
-    width: 110vw;
-    height: 110vh;
-    object-fit: cover;
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%) scale(1.05);
-    opacity: 0;
-    transition: opacity 2s ease-in-out;
-    transform-origin: center center;
-  }
-
-  /* Ken Burns zoom-in */
-  @keyframes zoomInKB {
-    from { transform: translate(-50%, -50%) scale(1.05); }
-    to   { transform: translate(-50%, -50%) scale(1.18); }
-  }
-
-  /* Ken Burns zoom-out */
-  @keyframes zoomOutKB {
-    from { transform: translate(-50%, -50%) scale(1.18); }
-    to   { transform: translate(-50%, -50%) scale(1.05); }
-  }
-
-  .kenburns-in  { animation: zoomInKB 7s ease-in-out forwards; }
-  .kenburns-out { animation: zoomOutKB 7s ease-in-out forwards; }
-
-  #loadingText {
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    color: #ffffffcc;
-    font-size: 20px;
-    z-index: 10;
-  }
-
-  /* Optional small hint for user click if autoplay blocked */
-  #tapHint {
-    position: fixed;
-    bottom: 20px;
-    left: 50%;
-    transform: translateX(-50%);
-    color: #ffffffcc;
-    font-size: 14px;
-    z-index: 10;
-    display: none;
-    background: rgba(0,0,0,0.35);
-    padding: 8px 14px;
-    border-radius: 20px;
+  body { margin:0; background:#000; overflow:hidden; font-family:Arial; }
+  #slideshow { position:fixed; top:0; left:0; width:100vw; height:100vh; background:black; overflow:hidden; }
+  #slideshow img { width:110vw; height:110vh; object-fit:cover; position:absolute; top:50%; left:50%;
+    transform:translate(-50%,-50%); opacity:0; transition:opacity 1.5s ease; }
+  #status {
+    position:fixed; top:10px; left:10px; right:10px;
+    color:#0f0; font-size:14px; z-index:9999;
+    background:rgba(0,0,0,.6); padding:10px; border-radius:10px;
+    white-space:pre-wrap;
   }
 </style>
 </head>
-
 <body>
 
-<!-- Background Music -->
-<audio id="bgmusic" loop preload="auto">
-  <source src="https://files.freemusicarchive.org/storage-freemusicarchive-org/music/no_curator/A_A_Aalto/Resting_Place/A_A_Aalto_-_Resting_Place.mp3" type="audio/mpeg" />
-</audio>
-
-<div id="loadingText">Loading slideshow…</div>
-<div id="tapHint">Tap / Click to start music</div>
-
-<!-- Slideshow Container -->
+<div id="status">Status: Loading…</div>
 <div id="slideshow"></div>
 
 <script>
-/* ===========================
-   CONFIG
-=========================== */
-
-// ✅ Your working Apps Script Web App URL (NO callback here)
-const API_URL =
-  "https://script.google.com/macros/s/AKfycbxVJbEXzRdQzTXiX4N9p4HQhySI1VGJcOXhdVjk6py_XFWuyZtA1KPmVWQvAnGhhXmm/exec";
-
-const SLIDE_DURATION = 7000; // 7 seconds per slide
-
-/* ===========================
-   VARIABLES
-=========================== */
+const API_URL = "https://script.google.com/macros/s/AKfycbxVJbEXzRdQzTXiX4N9p4HQhySI1VGJcOXhdVjk6py_XFWuyZtA1KPmVWQvAnGhhXmm/exec";
+const SLIDE_DURATION = 5000;
 
 let photos = [];
-let index = 0;
 let imgs = [];
-let slideshowStarted = false;
+let index = 0;
 
-/* ===========================
-   HELPERS
-=========================== */
-
-// Shuffle helper
-function shuffleArray(arr) {
-  for (let i = arr.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [arr[i], arr[j]] = [arr[j], arr[i]];
-  }
-  return arr;
+function setStatus(msg){
+  document.getElementById("status").textContent = msg;
+  console.log(msg);
 }
 
-// Fullscreen request (safe)
-function requestFullscreenSafe() {
-  const docEl = document.documentElement;
-  try {
-    if (docEl.requestFullscreen) docEl.requestFullscreen();
-    else if (docEl.webkitRequestFullscreen) docEl.webkitRequestFullscreen();
-    else if (docEl.mozRequestFullScreen) docEl.mozRequestFullScreen();
-    else if (docEl.msRequestFullscreen) docEl.msRequestFullscreen();
-  } catch (e) {
-    console.log("Fullscreen blocked/unsupported:", e);
-  }
-}
-
-// Start background music
-function startBackgroundMusic() {
-  const bg = document.getElementById("bgmusic");
-  const hint = document.getElementById("tapHint");
-  if (!bg) return;
-
-  bg.volume = 0;
-  const playPromise = bg.play();
-
-  if (playPromise !== undefined) {
-    playPromise.then(() => {
-      // Fade in
-      setTimeout(() => { bg.volume = 1; }, 800);
-      if (hint) hint.style.display = "none";
-    }).catch(() => {
-      // Autoplay blocked: show hint
-      if (hint) hint.style.display = "block";
-    });
-  }
-}
-
-// If autoplay blocked, allow click/tap to start
-document.addEventListener("click", () => startBackgroundMusic(), { once: false });
-
-/* ===========================
-   SLIDESHOW FUNCTIONS
-=========================== */
-
-function loadImages() {
+function loadImages(){
   const slideshow = document.getElementById("slideshow");
   slideshow.innerHTML = "";
 
-  photos.forEach(src => {
-    let img = document.createElement("img");
+  photos.forEach((src,i) => {
+    const img = document.createElement("img");
+
+    img.onload = () => console.log("✅ IMG LOADED:", i, src);
+    img.onerror = () => console.log("❌ IMG FAILED:", i, src);
+
     img.src = src;
     slideshow.appendChild(img);
   });
 
   imgs = document.querySelectorAll("#slideshow img");
+  setStatus("Images added to DOM: " + imgs.length);
 }
 
-function startSlideshow() {
-  if (slideshowStarted) return;
-  slideshowStarted = true;
-
-  // hide loading text
-  const loadingText = document.getElementById("loadingText");
-  if (loadingText) loadingText.style.display = "none";
-
-  if (!imgs || imgs.length === 0) {
-    console.log("No images yet, retrying slideshow start...");
-    setTimeout(startSlideshow, 500);
+function startSlideshow(){
+  if(!imgs.length){
+    setStatus("No images found. Slideshow not started.");
     return;
   }
 
-  function showSlide() {
-    imgs.forEach(img => {
-      img.style.opacity = 0;
-      img.classList.remove("kenburns-in", "kenburns-out");
-    });
-
-    const current = imgs[index];
-    if (current) {
-      current.style.opacity = 1;
-
-      // random zoom direction
-      const zoomIn = Math.random() < 0.5;
-      current.classList.add(zoomIn ? "kenburns-in" : "kenburns-out");
-    }
-
+  function showSlide(){
+    imgs.forEach(im => im.style.opacity = 0);
+    imgs[index].style.opacity = 1;
     index = (index + 1) % imgs.length;
   }
 
   showSlide();
   setInterval(showSlide, SLIDE_DURATION);
+  setStatus("Slideshow started ✅ Total images: " + imgs.length);
 }
 
-/* ===========================
-   JSONP LOADER (NO CORS ISSUE)
-=========================== */
+function loadFromAPI_JSONP(){
+  setStatus("Loading API via JSONP…");
 
-function loadFromAPI_JSONP() {
   const cbName = "cb_" + Date.now();
 
-  window[cbName] = function(data) {
-    try {
-      delete window[cbName];
+  window[cbName] = function(data){
+    setStatus("JSONP callback received ✅");
+    delete window[cbName];
 
-      if (!data || !data.photos || !data.photos.length) {
-        document.getElementById("loadingText").textContent =
-          "No photos found in folder.";
-        return;
-      }
-
-      photos = shuffleArray(data.photos.slice());
-      loadImages();
-
-      setTimeout(startSlideshow, 500);
-
-      // try to start music + fullscreen
-      startBackgroundMusic();
-      setTimeout(requestFullscreenSafe, 1000);
-    } catch (e) {
-      console.error("JSONP parse error:", e);
-      document.getElementById("loadingText").textContent = "Error processing API data.";
+    if(!data || !data.photos || !data.photos.length){
+      setStatus("API returned no photos ❌");
+      return;
     }
+
+    setStatus("Photos received: " + data.photos.length);
+    photos = data.photos.slice();
+
+    loadImages();
+    setTimeout(startSlideshow, 800);
   };
 
   const s = document.createElement("script");
   s.src = API_URL + "?callback=" + cbName;
-  s.onerror = function() {
-    document.getElementById("loadingText").textContent = "API Error loading slideshow.";
-  };
+
+  s.onload = () => console.log("✅ JSONP Script loaded");
+  s.onerror = () => setStatus("❌ JSONP script FAILED to load: " + s.src);
+
   document.body.appendChild(s);
 }
 
-/* ===========================
-   START
-=========================== */
-
-window.addEventListener("load", () => {
-  loadFromAPI_JSONP();
-});
+window.onload = loadFromAPI_JSONP;
 </script>
-
 </body>
 </html>
