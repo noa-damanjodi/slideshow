@@ -83,7 +83,7 @@
 
 <script>
 // GOOGLE DRIVE API URL (your working one)
-const API_URL = "https://script.google.com/macros/s/AKfycbwT1dAyAfnw7Xo17-WneMWAglLOx5ah5qXGqUdoKQ7lOPlOrqkEr8Sw6_OkvXqPSKo/exec";
+const API_URL = "https://script.google.com/macros/s/AKfycbxVJbEXzRdQzTXiX4N9p4HQhySI1VGJcOXhdVjk6py_XFWuyZtA1KPmVWQvAnGhhXmm/exec";
 
 
 // CONFIG
@@ -193,6 +193,7 @@ function loadFromAPI_JSONP() {
   const cbName = "cb_" + Date.now();
 
   window[cbName] = function(data) {
+    // cleanup
     delete window[cbName];
 
     if (!data || !data.photos || !data.photos.length) {
@@ -204,6 +205,8 @@ function loadFromAPI_JSONP() {
     loadImages();
 
     setTimeout(startSlideshow, 500);
+
+    // music + fullscreen
     startBackgroundMusic();
     setTimeout(requestFullscreenSafe, 1000);
   };
@@ -217,8 +220,8 @@ function loadFromAPI_JSONP() {
   document.body.appendChild(s);
 }
 
+// ✅ call JSONP load
 loadFromAPI_JSONP();
-
 
 
 // As extra safety, attempt fullscreen + music once on load as well
