@@ -189,17 +189,12 @@ function startSlideshow() {
 }
 
 // Fetch photo list from Google Apps Script
-fetch(API_URL)
-  .then(async (r) => {
-    console.log("Status:", r.status);
-    const text = await r.text();
-    console.log("Raw:", text);
+function loadFromAPI_JSONP() {
+  const cbName = "cb_" + Date.now();
 
-    let data = JSON.parse(text);
-    console.log("JSON:", data);
-    return data;
-  })
-  .then(data => {
+  window[cbName] = function(data) {
+    delete window[cbName];
+
     if (!data || !data.photos || !data.photos.length) {
       document.getElementById("loadingText").textContent = "No photos found in folder.";
       return;
@@ -209,15 +204,21 @@ fetch(API_URL)
     loadImages();
 
     setTimeout(startSlideshow, 500);
-
     startBackgroundMusic();
     setTimeout(requestFullscreenSafe, 1000);
-  })
-  .catch(err => {
-    console.error("Error loading photos:", err);
-    document.getElementById("loadingText").textContent =
-      "Error: " + err.message;
-  });
+  };
+
+  const s = document.createElement("script");
+  s.src = API_URL + "?callback=" + cbName;
+  s.onerror = function() {
+    document.getElementById("loadingText").textContent = "API Error loading JSONP.";
+  };
+
+  document.body.appendChild(s);
+}
+
+loadFromAPI_JSONP();
+
 
 
 // As extra safety, attempt fullscreen + music once on load as well
