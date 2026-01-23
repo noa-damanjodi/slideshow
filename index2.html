@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Event Slideshow</title>
+
+<style>
+  body {
+    margin: 0;
+    background: black;
+    overflow: hidden;
+    font-family: Arial, sans-serif;
+  }
+
+  #slideshow {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    background: black;
+  }
+
+  #slideshow img {
+    width: 110vw;
+    height: 110vh;
+    object-fit: cover;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(1.05);
+    opacity: 0;
+    transition: opacity 2s ease-in-out;
+    transform-origin: center center;
+  }
+
+  /* Ken Burns zoom-in */
+  @keyframes zoomInKB {
+    from { transform: translate(-50%, -50%) scale(1.05); }
+    to   { transform: translate(-50%, -50%) scale(1.18); }
+  }
+
+  /* Ken Burns zoom-out */
+  @keyframes zoomOutKB {
+    from { transform: translate(-50%, -50%) scale(1.18); }
+    to   { transform: translate(-50%, -50%) scale(1.05); }
+  }
+
+  .kenburns-in  { animation: zoomInKB 7s ease-in-out forwards; }
+  .kenburns-out { animation: zoomOutKB 7s ease-in-out forwards; }
+
+  #loadingText {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: #ffffffcc;
+    font-size: 20px;
+    z-index: 10;
+  }
+
+  /* Optional small hint for user click if autoplay blocked */
+  #tapHint {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: #ffffffcc;
+    font-size: 14px;
+    z-index: 10;
+    display: none;
+    background: rgba(0,0,0,0.35);
+    padding: 8px 14px;
+    border-radius: 20px;
+  }
+</style>
+</head>
+
+<body>
+
+<!-- Background Music -->
+<audio id="bgmusic" loop preload="auto">
+  <source src="https://files.freemusicarchive.org/storage-freemusicarchive-org/music/no_curator/A_A_Aalto/Resting_Place/A_A_Aalto_-_Resting_Place.mp3" type="audio/mpeg" />
+</audio>
+
+<div id="loadingText">Loading slideshow…</div>
+<div id="tapHint">Tap / Click to start music</div>
+
+<!-- Slideshow Container -->
+<div id="slideshow"></div>
+
+<script>
+/* ===========================
+   CONFIG
+=========================== */
+
+// ✅ Your working Apps Script Web App URL (NO callback here)
+const API_URL =
+  "https://script.google.com/macros/s/AKfycbxVJbEXzRdQzTXiX4N9p4HQhySI1VGJcOXhdVjk6py_XFWuyZtA1KPmVWQvAnGhhXmm/exec";
+
+const SLIDE_DURATION = 7000; // 7 seconds per slide
+
+/* ===========================
+   VARIABLES
+=========================== */
+
+let photos = [];
+let index = 0;
+let imgs = [];
+let slideshowStarted = false;
+
+/* ===========================
+   HELPERS
+=========================== */
+
+// Shuffle helper
+function shuffleArray(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+// Fullscreen request (safe)
+function requestFullscreenSafe() {
+  const docEl = document.documentElement;
+  try {
+    if (docEl.requestFullscreen) docEl.requestFullscreen();
+    else if (docEl.webkitRequestFullscreen) docEl.webkitRequestFullscreen();
+    else if (docEl.mozRequestFullScreen) docEl.mozRequestFullScreen();
+    else if (docEl.msRequestFullscreen) docEl.msRequestFullscreen();
+  } catch (e) {
+    console.log("Fullscreen blocked/unsupported:", e);
+  }
+}
+
+// Start background music
+function startBackgroundMusic() {
+  const bg = document.getElementById("bgmusic");
+  const hint = document.getElementById("tapHint");
+  if (!bg) return;
+
+  bg.volume = 0;
+  const playPromise = bg.play();
+
+  if (playPromise !== undefined) {
+    playPromise.then(() => {
+      // Fade in
+      setTimeout(() => { bg.volume = 1; }, 800);
+      if (hint) hint.style.display = "none";
+    }).catch(() => {
+      // Autoplay blocked: show hint
+      if (hint) hint.style.display = "block";
+    });
+  }
+}
+
+// If autoplay blocked, allow click/tap to start
+document.addEventListener("click", () => startBackgroundMusic(), { once: false });
+
+/* ===========================
+   SLIDESHOW FUNCTIONS
+=========================== */
+
+function loadImages() {
+  const slideshow = document.getElementById("slideshow");
+  slideshow.innerHTML = "";
+
+  photos.forEach(src => {
+    let img = document.createElement("img");
+    img.src = src;
+    slideshow.appendChild(img);
+  });
+
+  imgs = document.querySelectorAll("#slideshow img");
+}
+
+function startSlideshow() {
+  if (slideshowStarted) return;
+  slideshowStarted = true;
+
+  // hide loading text
+  const loadingText = document.getElementById("loadingText");
+  if (loadingText) loadingText.style.display = "none";
+
+  if (!imgs || imgs.length === 0) {
+    console.log("No images yet, retrying slideshow start...");
+    setTimeout(startSlideshow, 500);
+    return;
+  }
+
+  function showSlide() {
+    imgs.forEach(img => {
+      img.style.opacity = 0;
+      img.classList.remove("kenburns-in", "kenburns-out");
+    });
+
+    const current = imgs[index];
+    if (current) {
+      current.style.opacity = 1;
+
+      // random zoom direction
+      const zoomIn = Math.random() < 0.5;
+      current.classList.add(zoomIn ? "kenburns-in" : "kenburns-out");
+    }
+
+    index = (index + 1) % imgs.length;
+  }
+
+  showSlide();
+  setInterval(showSlide, SLIDE_DURATION);
+}
+
+/* ===========================
+   JSONP LOADER (NO CORS ISSUE)
+=========================== */
+
+function loadFromAPI_JSONP() {
+  const cbName = "cb_" + Date.now();
+
+  window[cbName] = function(data) {
+    try {
+      delete window[cbName];
+
+      if (!data || !data.photos || !data.photos.length) {
+        document.getElementById("loadingText").textContent =
+          "No photos found in folder.";
+        return;
+      }
+
+      photos = shuffleArray(data.photos.slice());
+      loadImages();
+
+      setTimeout(startSlideshow, 500);
+
+      // try to start music + fullscreen
+      startBackgroundMusic();
+      setTimeout(requestFullscreenSafe, 1000);
+    } catch (e) {
+      console.error("JSONP parse error:", e);
+      document.getElementById("loadingText").textContent = "Error processing API data.";
+    }
+  };
+
+  const s = document.createElement("script");
+  s.src = API_URL + "?callback=" + cbName;
+  s.onerror = function() {
+    document.getElementById("loadingText").textContent = "API Error loading slideshow.";
+  };
+  document.body.appendChild(s);
+}
+
+/* ===========================
+   START
+=========================== */
+
+window.addEventListener("load", () => {
+  loadFromAPI_JSONP();
+});
+</script>
+
+</body>
+</html>
