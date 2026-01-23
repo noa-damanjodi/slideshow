@@ -190,30 +190,35 @@ function startSlideshow() {
 
 // Fetch photo list from Google Apps Script
 fetch(API_URL)
-  .then(r => r.json())
+  .then(async (r) => {
+    console.log("Status:", r.status);
+    const text = await r.text();
+    console.log("Raw:", text);
+
+    let data = JSON.parse(text);
+    console.log("JSON:", data);
+    return data;
+  })
   .then(data => {
     if (!data || !data.photos || !data.photos.length) {
       document.getElementById("loadingText").textContent = "No photos found in folder.";
       return;
     }
 
-    // Shuffle photos for random order
     photos = shuffleArray(data.photos.slice());
-
     loadImages();
 
-    // Small delay to ensure images are in DOM, then start slideshow
     setTimeout(startSlideshow, 500);
 
-    // Try auto music + fullscreen after images are ready
     startBackgroundMusic();
     setTimeout(requestFullscreenSafe, 1000);
   })
   .catch(err => {
     console.error("Error loading photos:", err);
-    const lt = document.getElementById("loadingText");
-    if (lt) lt.textContent = "Error loading photos.";
+    document.getElementById("loadingText").textContent =
+      "Error: " + err.message;
   });
+
 
 // As extra safety, attempt fullscreen + music once on load as well
 window.addEventListener("load", () => {
