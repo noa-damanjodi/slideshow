@@ -48,11 +48,10 @@
 </head>
 <body>
 
-<!-- Audio (optional) -->
-<!-- Primary was failing; replaced with a working test track and added crossorigin for diagnostics -->
+<!-- Audio (primary replaced with a known-good test track) -->
 <audio id="bgmusic" loop preload="auto" crossorigin="anonymous">
   <source id="musicSrc" src="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3" type="audio/mpeg">
-  <!-- If desired, replace the src above with your hosted MP3 URL -->
+  <!-- Replace the src above with your hosted MP3 if you have one -->
 </audio>
 
 <div id="loadingText">Loading photos…</div>
@@ -81,7 +80,7 @@
     <div style="font-size:20px;font-weight:800;margin-bottom:8px;color:#fff">NOA — Memories Slideshow</div>
     <div style="margin-bottom:12px;color:#ddd">Press Start to begin slideshow (this unlocks audio & fullscreen).</div>
     <button id="startBtn">Start Slideshow</button>
-    <div id="smallHint">Tip: press OK on your remote. If audio doesn't play, try again or mute.</div>
+    <div id="smallHint">Tip: press OK on your remote. If audio doesn't play, use the audio controls that appear.</div>
   </div>
 </div>
 
@@ -89,24 +88,18 @@
 /* ===========================
    Configuration
    =========================== */
-// Replace this with your Apps Script JSONP endpoint if needed
 const API_URL = "https://script.google.com/macros/s/AKfycby0kXzj0SUHsuC5dow13wukC6L4SUaoP8Jpc_3qW2BaMM_lS1kHUcZ6xAgqRLy76gfo/exec";
-
-// slideshow settings
 const SLIDE_DURATION = 7000; // ms
-const TRANSITION_MS = 1200;  // CSS fade time, must match CSS transition
-const REFRESH_INTERVAL_MINUTES = 10; // minutes to reload photo list automatically
-const MAX_DISPLAY_CHARS = 120; // caption trimming
-
-// optional fallback images (if API fails)
-const FALLBACK_IMAGES = [
-  // put absolute URLs to fallback images here
-];
-
-// audio fallback (if primary fails)
+const TRANSITION_MS = 1200;
+const REFRESH_INTERVAL_MINUTES = 10;
+const MAX_DISPLAY_CHARS = 120;
+const FALLBACK_IMAGES = [];
 const FALLBACK_AUDIO = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3";
 
-let photos = [];        // array of {url, caption}
+/* ===========================
+   State & elements
+   =========================== */
+let photos = [];
 let currentIndex = 0;
 let slideTimer = null;
 let started = false;
@@ -121,7 +114,7 @@ const bgmusic = document.getElementById('bgmusic');
 const musicSrc = document.getElementById('musicSrc');
 
 /* ===========================
-   Helpers & diagnostics
+   Helpers
    =========================== */
 function log(msg){ console.log('[slideshow]', msg); }
 
@@ -157,7 +150,7 @@ function safeTrimCaption(text){
 }
 
 /* ===========================
-   Build DOM & start slide loop
+   Build DOM & slides
    =========================== */
 function buildSlideshowDOM(){
   slideshowEl.innerHTML = '';
@@ -192,7 +185,7 @@ function nextSlide(){
 }
 
 /* ===========================
-   Slideshow start (visuals only)
+   Slideshow control
    =========================== */
 function startSlideshow(){
   if(started) return;
@@ -218,7 +211,7 @@ function requestFullscreen(){
 }
 
 /* ===========================
-   Main: fetch photo list then preload, then start
+   Fetch & preload photos
    =========================== */
 async function fetchAndRefreshPhotos(){
   loadingText.style.display = 'block';
@@ -276,7 +269,7 @@ async function fetchAndRefreshPhotos(){
 function shuffleArray(a){ for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]];} return a; }
 
 /* ===========================
-   Audio error/fallback handling
+   Audio fallback handling
    =========================== */
 bgmusic.addEventListener('error', () => {
   const err = bgmusic.error;
@@ -293,48 +286,52 @@ bgmusic.addEventListener('error', () => {
 });
 
 /* ===========================
-   Start overlay click to initialize (play attempts happen inside gesture)
+   Start button: non-blocking, in-gesture play attempt + immediate UI response
    =========================== */
-startBtn.addEventListener('click', async ()=>{
-  // 1) Attempt to play audio immediately while still inside the user gesture.
+startBtn.addEventListener('click', function startHandler(ev){
+  console.log('Start button clicked', ev);
+
+  // Attempt to play audio immediately inside the user gesture.
   if(bgmusic){
     bgmusic.volume = 1.0;
-    // don't rely on awaiting the fetch before calling play
-    try {
-      await bgmusic.play();
+    bgmusic.muted = false;
+    bgmusic.play().then(() => {
       console.log('bgmusic.play() succeeded during gesture');
-    } catch (e) {
-      console.warn('bgmusic.play() blocked or failed in gesture', e);
-      // show hint to user
+    }).catch((err) => {
+      console.warn('bgmusic.play() failed during gesture', err);
+      // Reveal audio controls so an operator can press Play manually.
+      bgmusic.controls = true;
       loadingText.style.display = 'block';
       loadingText.innerText = 'Audio blocked — press Play on the audio controls or unmute the TV.';
-      // reveal audio controls to allow manual play (useful for debugging/testing)
-      bgmusic.controls = true;
-    }
+    });
   }
 
-  // 2) Try to fetch photos (allow this to run; if it delays, audio play attempt already ran)
-  try{
-    await fetchAndRefreshPhotos();
-  } catch(e){
-    console.warn('initial fetch error, will still try to start', e);
+  // Start visuals immediately so UI responds without waiting for network.
+  try {
+    startSlideshow();
+  } catch (e) {
+    console.error('startSlideshow error', e);
   }
 
-  // 3) Start slideshow visuals (audio already attempted)
-  startSlideshow();
+  // Load photos in background (non-blocking).
+  fetchAndRefreshPhotos().then(() => {
+    console.log('photos loaded');
+  }).catch((err) => {
+    console.warn('initial photo fetch (background) failed:', err);
+  });
 });
 
-// keyboard remote friendly: pressing OK/Enter triggers start overlay if visible
+/* keyboard remote friendly: Enter/OK triggers start overlay if visible */
 window.addEventListener('keydown', (ev) => {
   if(!started && (ev.key === 'Enter' || ev.key === 'OK' || ev.key === ' ' || ev.key === 'Spacebar')) {
     startBtn.click();
   }
 });
 
-// initial fetch to warm the photo list (won't enable audio)
+/* Warm the photo list on load (won't enable audio) */
 fetchAndRefreshPhotos().catch(()=>{ /* ignore initial fetch errors until start */ });
 
-/* Optional quick mute/unmute control wiring (useful on TV remotes) */
+/* Optional simple mute/unmute control wiring (useful when debugging) */
 const muteBtn = document.getElementById('muteBtn');
 if(muteBtn){
   muteBtn.addEventListener('click', () => {
